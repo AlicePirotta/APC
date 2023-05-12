@@ -32,9 +32,7 @@ nside = 64
 
 freq_maps = get_observation(instrument, 'd0s0', noise=False, nside=nside)
 
-# freq_mapsQ = get_observation(instrument, 'd0s0',nside=nside)[:,1,:]
-# freq_mapsU = get_observation(instrument, 'd0s0',nside=nside)[:,2,:]
-# freq_mapsP = np.sqrt(np.power(freq_mapsQ,2)+np.power(freq_mapsU,2))
+
 
 components= [CMB(),Dust(50.),Synchrotron(50.)]
 A = MixingMatrix(*components)
@@ -43,24 +41,22 @@ A_ev = A.evaluator(instrument.frequency)
 #invN=np.linalg.inv(np.eye(len(instrument.frequency)))
 invN = np.diag((hp.nside2resol(nside, arcmin=True) / instrument.depth_p)**2)
 
-x0 =np.array([1.54,20,-3,1,1,1])
+
+x0 =np.array([1.54,20,-3])
 
 def lnprior(i):
-    Bd, Td, Bs, z= i
+    Bd, Td, Bs = i
     if ((Bd < 0.) or (Bd > 2.) or
         (Td < 10.) or (Td > 30.) or
-        (Bs < -4.) or (Bs > -2.) or 
-        (z < 0.)):
+        (Bs < -4.) or (Bs > -2.)):
         return -np.inf
     else:
         return 0.0
     
 def likelihood(i):
-    Bd, T, Bs, z= i
-    x, y = 1, 1
-    G = np.diag([x,x,x,x,x,x,x,x,x,x,x,x,y,y,y,y,y,z,z,z,z,z])
+    Bd, T, Bs=i
     invNd = np.einsum('ij,jsp->isp', invN, freq_maps)
-    A_maxL =G.dot(A_ev(np.array([Bd,T,Bs]))) 
+    A_maxL =A_ev(np.array([Bd,T,Bs]))
     logL = 0
     AtNd= np.einsum('ji,jsp->isp', A_maxL, invNd)
     AtNA = np.linalg.inv(A_maxL.T.dot(invN).dot(A_maxL))
@@ -74,16 +70,16 @@ def lnprob(x):
     return lp + likelihood(x)
 
 
-ndim,nwalkers=4,30
-pos = np.random.uniform(low=[x0[0] * (1 - 1 / 4), x0[1] * (1 - 1 / 4), x0[2] * (1 - 1 / 4), x0[3] * (1 - 1 / 4) ], high=[x0[0] * (1 + 1 / 4), x0[1] * (1 + 1 / 4), x0[2] * (1 + 1 / 4), x0[3] * (1 + 1 / 4)], size=(nwalkers, ndim))
+ndim,nwalkers=3,30
+pos = np.random.uniform(low=[x0[0] * (1 - 1 / 4), x0[1] * (1 - 1 / 4), x0[2] * (1 - 1 / 4)], high=[x0[0] * (1 + 1 / 4), x0[1] * (1 + 1 / 4), x0[2] * (1 + 1 / 4)], size=(nwalkers, ndim))
 
 
 sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob)
 sampler.run_mcmc(pos,20000, progress=True)
 samples = sampler.get_chain(flat=True)
-fig = corner.corner(samples, labels=["Bd", "T", "Bs", "g3"])
+fig = corner.corner(samples, labels=["Bd", "T", "Bs"])
 print(samples)
-np.save("g3",samples)
+np.save("3d",samples)
 
 plt.show()
 
