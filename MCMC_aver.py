@@ -1,8 +1,5 @@
 import warnings
 warnings.filterwarnings("ignore")
-
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 from fgbuster import CMB, Dust, Synchrotron, MixingMatrix
@@ -31,6 +28,7 @@ freq_maps = get_observation(instrument, 'd0s0', noise=False, nside=nside)
 components= [CMB(),Dust(50.),Synchrotron(50.)]
 A = MixingMatrix(*components)
 A_ev = A.evaluator(instrument.frequency)
+n_channels= 22
 
 
 #NOISE
@@ -74,51 +72,55 @@ def lnprior(y):
     else:
         return 0.0
     
+dati = np.einsum('abc,cbx-> ax',freq_maps,freq_maps.T)
 
-
-dati = np.einsum('ijp,klp-> ijkl',freq_maps,freq_maps)
 
 def aver_likelihood(y):
-    Bd, T, Bs, a, b, c, d, e, f, g, h, i, l, m, n, o, p, q, s, t, u, v, w, z = y
-    r= 1
+    Bd, T, Bs, a, b, c, d, e, f, g, i, l, m, n, o, p, q, r, s, t, u, v, w, z = y
+    h = n_channels - (a+b+c+d+e+f+g+i+l+m+n+o+p+q+r+s+t+u+v+w+z)
+    # h = 1
     G = np.diag([a, b, c, d, e, f, g, h, i, l, m, n, o, p, q, r, s, t, u, v, w, z ])
-    A_maxL =G.dot(A_ev(np.array([Bd,T,Bs]))) 
-    logL = 0
-    AtN = A_maxL.T.dot(invN)
-    NA= invN.dot(A_maxL)
-    AtNA = np.linalg.inv(A_maxL.T.dot(invN).dot(A_maxL))
-    P = NA.dot(AtNA).dot(AtN)
-    logL = logL -np.trace(np.einsum('fg, gikj->fk', P, dati)+np.einsum('fg, ij->gi', P, N))
-
+    A =G.dot(A_ev(np.array([Bd,T,Bs]))) 
+    logL=0
+    NA= np.einsum('ab,bc->ac', invN,A)
+    AtNA = np.linalg.inv(np.einsum('ab,bc,cd->ad',A.T,invN,A))
+    AtN= np.einsum('ab,bc->ac', A.T, invN)
+    P = np.einsum ('ab,bc,cd->ad',NA,AtNA,AtN)
+    dN = dati+N
+    logL = logL - np.trace(np.einsum('ab,bc->ac',P,dN))/2
     if logL != logL:
         return 0.0
     return logL
-
 def lnprob(x):
     lp = lnprior(x)
     return lp + aver_likelihood(x)
 
 
 ndim,nwalkers=24,50
-pos = np.random.uniform(low=x0 * (1 - 1 / 40), high= x0 * (1 + 1 / 40), size=(nwalkers, ndim))
+pos = np.random.uniform(low=x0 * (1 - 1 / 4), high= x0 * (1 + 1 / 4), size=(nwalkers, ndim))
 
 
 #SAMPLE
 sampler = emcee.EnsembleSampler(nwalkers, ndim, lnprob)
-sampler.run_mcmc(pos,1000000, progress=True)
+sampler.run_mcmc(pos,10000, progress=True)
 
-
-
-#AUTOCORRELATION TIME
 tau = sampler.get_autocorr_time(quiet=True)
-samples = sampler.get_chain(discard=3*int(max(tau)), thin=int(max(tau)), flat=True)
-np.save("1000000_aver.npy",samples)
+samples = sampler.get_chain(discard=1000, thin=int(max(tau)), flat=True)
+
+
+
+np.save("500000_aver_dopo.npy",samples)
+
 
 
 s1 = MCSamples(samples=samples, names=["Bd", "T", "Bs",  "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g9", "g10", "g11", "g12", "g13", "g14", "g15", "g16", "g17", "g18", "g19", "g20", "g21", "g22" ], labels=["Bd", "T", "Bs",  "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g9", "g10", "g11", "g12", "g13", "g14", "g15", "g16", "g17", "g18", "g19", "g20", "g21", "g22" ], label='21g')
 g = plots.get_subplot_plotter()
 g.triangle_plot([s1], filled=True, title_limit= True)
+plt.savefig('aver')
 plt.show()
+
+
+
 
 
 
